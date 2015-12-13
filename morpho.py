@@ -4,13 +4,34 @@ import cv2
 import numpy as np
 from collections import deque # deque permet d'avoir une structure de piles
 
+
+# Permet d'obtenir les voisins de (x,y) en 4 ou 8 connexités
+def voisins(x,y,nb_connex):
+    voisin = np.zeros((nb_connex, 2))
+    voisin[0] = [ x-1, y   ]
+    voisin[1] = [ x  , y-1 ]
+    voisin[2] = [ x+1, y   ]
+    voisin[3] = [ x  , y+1 ]
+    if nb_connex == 8:
+        voisin[4] = [ x-1, y-1 ]
+        voisin[5] = [ x+1, y-1 ]
+        voisin[6] = [ x-1, y+1 ]
+        voisin[7] = [ x+1, y+1 ]
+        
+    return voisin
+    
+
 img = cv2.imread("cell.tif")
 img = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY) # conversion de l'image en niveaux de gris
+kernel = np.ones((2,2),np.uint8)
+gradient = cv2.morphologyEx(img, cv2.MORPH_GRADIENT, kernel)
+img = gradient
 
 L = [] # liste qui contiendra les coordonnées des minima locaux
 Marque = np.zeros(img.shape) # matrice qui indique si les pixels sont traités
 labels = np.zeros(img.shape) # matrice contenant les labels, les pixels ayant un label valant 0 à la fin du programme sont des points frontière
 
+nb_connex = 8
 k = 10 # taille du carré considéré pour calculer les minima locaux
 p = 1 # compteur qui sert d'indicateur de label
 
@@ -27,6 +48,13 @@ for i in range(0, np.size(img, 0) - k, k):
         labels[a,b] = p
         p += 1
 
+#cv2.namedWindow('labels', cv2.WINDOW_NORMAL)
+#cv2.imshow('labels', labels)
+#cv2.waitKey(0)
+
+#L.append((60,80)); Marque[60,80] = 1; labels[60,80] = 1
+#L.append((140,100)); Marque[140,100] = 1; labels[140,100] = 2
+
 
 fifos = [deque() for i in range(256)] # liste des piles correspondant aux intensités des pixels
 
@@ -34,14 +62,21 @@ fifos = [deque() for i in range(256)] # liste des piles correspondant aux intens
 # dans la boucle suivante, on considère les 4 plus proches voisins du minimum local considéré
 for marqueur in L:
     x, y = marqueur[0], marqueur[1]
-    if ((x-1,y) not in L):
-        fifos[img[x-1,y]].append((x-1,y))
-    if ((x,y-1) not in L):
-        fifos[img[x,y-1]].append((x,y-1))
-    if (((x,y+1) not in L) and (y+1 < np.size(img,1))):
-        fifos[img[x,y+1]].append((x,y+1))
-    if (((x+1,y) not in L) and (x+1 < np.size(img,0))):
-        fifos[img[x+1,y]].append((x+1,y))
+    all_voisins = voisins(x,y,nb_connex)
+    for vois in all_voisins:
+        X = vois[0]
+        Y = vois[1]
+        if ((X,Y) not in L) and X >= 0 and Y >= 0 and X < np.size(img,0) and Y < np.size(img,1):
+            if ((X,Y) not in fifos[img[X,Y]]):
+                fifos[img[X,Y]].append((X,Y))
+    #if ((x-1,y) not in L):
+    #    fifos[img[x-1,y]].append((x-1,y))
+    #if ((x,y-1) not in L):
+    #    fifos[img[x,y-1]].append((x,y-1))
+    #if (((x,y+1) not in L) and (y+1 < np.size(img,1))):
+    #    fifos[img[x,y+1]].append((x,y+1))
+    #if (((x+1,y) not in L) and (x+1 < np.size(img,0))):
+    #    fifos[img[x+1,y]].append((x+1,y))
         
 
 while (np.array_equal(Marque, np.ones(img.shape)) == False):
@@ -51,49 +86,84 @@ while (np.array_equal(Marque, np.ones(img.shape)) == False):
     while (x == - 1):
         if ((not fifos[n]) == False): # not L est égal à True lorsque L est vide
             z = fifos[n].popleft() # popleft() retourne et enlève le premier élément de la pile
-            x, y = z[0], z[1]
+            if not Marque[z[0], z[1]]:
+                x, y = z[0], z[1]
         n += 1
+	if (n > 256):
+	    print "All queues empty"
+	    break
         
         
 ########################################################################################
     Marque[x,y] = 1
-    if (((x+1) < np.size(img,0)) and ((y+1) < np.size(img,1))):
-        if (Marque[x-1,y] + Marque[x,y-1] + Marque[x,y+1] + Marque[x+1,y] < 4):
-            if (((x-1,y) not in fifos[img[x-1,y]]) and (Marque[x-1,y] == 0)):
-                fifos[img[x-1,y]].append((x-1,y))
-            if (((x,y-1) not in fifos[img[x,y-1]]) and (Marque[x,y-1] == 0)):
-                fifos[img[x,y-1]].append((x,y-1))
-            if (((x,y+1) not in fifos[img[x,y+1]]) and (Marque[x,y+1] == 0)):
-                fifos[img[x,y+1]].append((x,y+1))
-            if (((x+1,y) not in fifos[img[x+1,y]]) and (Marque[x+1,y] == 0)):
-                fifos[img[x+1,y]].append((x+1,y))
-                
-    elif ((x+1) < np.size(img,0)):
-        if (Marque[x-1,y] + Marque[x,y-1] +Marque[x+1,y] < 3):
-            if (((x-1,y) not in fifos[img[x-1,y]]) and (Marque[x-1,y] == 0)):
-                fifos[img[x-1,y]].append((x-1,y))
-            if (((x,y-1) not in fifos[img[x,y-1]]) and (Marque[x,y-1] == 0)):
-                fifos[img[x,y-1]].append((x,y-1))
-            if (((x+1,y) not in fifos[img[x+1,y]]) and (Marque[x+1,y] == 0)):
-                fifos[img[x+1,y]].append((x+1,y))
-                
-    elif ((y+1) < np.size(img,1)):
-        if (Marque[x-1,y] + Marque[x,y-1] +Marque[x,y+1] < 3):
-            if (((x-1,y) not in fifos[img[x-1,y]]) and (Marque[x-1,y] == 0)):
-                fifos[img[x-1,y]].append((x-1,y))
-            if (((x,y-1) not in fifos[img[x,y-1]]) and (Marque[x,y-1] == 0)):
-                fifos[img[x,y-1]].append((x,y-1))
-            if (((x,y+1) not in fifos[img[x,y+1]]) and (Marque[x,y+1] == 0)):
-                fifos[img[x,y+1]].append((x,y+1))
-                
-    else:
-        if 
+    
+    # On cherche à savoir si le pixel courant est un point frontière
+    # C'est le cas si il est entouré par deux pixels marqués par des
+    # des labels différents
+    labels[x,y] = -1
+    all_voisins = voisins(x,y,nb_connex)
+    for vois in all_voisins:
+        xv = vois[0]
+        yv = vois[1]
+        if xv >= 0 and yv >= 0 and xv < np.size(img,0) and yv < np.size(img,1):
+            if Marque[xv,yv] and labels[x,y] != 0:
+                if labels[xv,yv] == 0 and labels[x,y] == -2:
+                    labels[x,y] = -1
+                elif labels[xv, yv] > 0 and labels[x,y] <= -1:
+                    labels[x,y] = labels[xv,yv]
+                elif labels[xv, yv] > 0 and labels[xv,yv] > 0 and labels[x,y] != labels[xv,yv]:
+                    labels[x,y] = 0
+            if not Marque[xv,yv] and ((xv,yv) not in fifos[img[xv,yv]]):
+                fifos[img[xv,yv]].append((xv,yv))
+    if labels[x,y] == -1:
+        labels[x,y] = 1000
+    #if labels[x,y] >= 0:
+    #    Marque[x,y] = 1
+    #    for vois in all_voisins:
+    #        if xv >= 0 and yv >= 0 and xv < np.size(img,0) and yv < np.size(img,1):
+    #            if not Marque[xv,yv] and ((xv,yv) not in fifos[img[xv,yv]]):
+    #                fifos[img[xv,yv]].append((xv,yv))
+    #else:
+    #    if ((x,y) not in fifos[img[xv,yv]]):
+    #        fifos[img[x,y]].append((x,y))
+
+#    if (((x+1) < np.size(img,0)) and ((y+1) < np.size(img,1))):
+#        if (Marque[x-1,y] + Marque[x,y-1] + Marque[x,y+1] + Marque[x+1,y] < 4):
+#            if (((x-1,y) not in fifos[img[x-1,y]]) and (Marque[x-1,y] == 0)):
+#                fifos[img[x-1,y]].append((x-1,y))
+#            if (((x,y-1) not in fifos[img[x,y-1]]) and (Marque[x,y-1] == 0)):
+#                fifos[img[x,y-1]].append((x,y-1))
+#            if (((x,y+1) not in fifos[img[x,y+1]]) and (Marque[x,y+1] == 0)):
+#                fifos[img[x,y+1]].append((x,y+1))
+#            if (((x+1,y) not in fifos[img[x+1,y]]) and (Marque[x+1,y] == 0)):
+#                fifos[img[x+1,y]].append((x+1,y))
+#                
+#    elif ((x+1) < np.size(img,0)):
+#        if (Marque[x-1,y] + Marque[x,y-1] +Marque[x+1,y] < 3):
+#            if (((x-1,y) not in fifos[img[x-1,y]]) and (Marque[x-1,y] == 0)):
+#                fifos[img[x-1,y]].append((x-1,y))
+#            if (((x,y-1) not in fifos[img[x,y-1]]) and (Marque[x,y-1] == 0)):
+#                fifos[img[x,y-1]].append((x,y-1))
+#            if (((x+1,y) not in fifos[img[x+1,y]]) and (Marque[x+1,y] == 0)):
+#                fifos[img[x+1,y]].append((x+1,y))
+#                
+#    elif ((y+1) < np.size(img,1)):
+#        if (Marque[x-1,y] + Marque[x,y-1] +Marque[x,y+1] < 3):
+#            if (((x-1,y) not in fifos[img[x-1,y]]) and (Marque[x-1,y] == 0)):
+#                fifos[img[x-1,y]].append((x-1,y))
+#            if (((x,y-1) not in fifos[img[x,y-1]]) and (Marque[x,y-1] == 0)):
+#                fifos[img[x,y-1]].append((x,y-1))
+#            if (((x,y+1) not in fifos[img[x,y+1]]) and (Marque[x,y+1] == 0)):
+#                fifos[img[x,y+1]].append((x,y+1))
+#                
+#    else:
+#        if 
         
 ########################################################################################
             
 
 
-cv2.namedWindow('image', cv2.WINDOW_NORMAL)
-cv2.imshow('image',img)
-cv2.waitKey(0)
-cv2.destroyAllWindows()
+#cv2.namedWindow('image', cv2.WINDOW_NORMAL)
+#cv2.imshow('image',img)
+#cv2.waitKey(0)
+#cv2.destroyAllWindows()
