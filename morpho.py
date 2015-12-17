@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 
+import __future__
 import cv2
 import numpy as np
 from collections import deque # deque permet d'avoir une structure de piles
@@ -8,14 +9,33 @@ import scipy.misc
 import pylab as pl
 
 
-#Ajoute du bruit à une image
-def addBlur(im, std = -1):
+#Ajoute un bruit blanc (uniforme donc) à une image
+def addBlurUniform(im, std = -1):
     im_max = np.max(im)
     im_min = np.min(im)
     h, w = im.shape
     if std == -1:
         std = (im_max-im_min) / 4
     result = im + std*(np.random.rand(h, w))
+    result[result > 255] = 255
+    return result
+    
+    
+   
+#Ajoute un bruit gaussien à une image
+def addBlurGaussian(im, mu = 0, std = 5):
+    h, w = im.shape
+    result = im + np.random.normal(mu, std, (h,w))
+    result[result > 255] = 255
+    return result
+    
+    
+    
+#Modifie le contraste d'une image
+def modifyContrast(im, coef = 1):
+    m = np.mean(im)
+    result = coef * (im - m) + m
+    result[result > 255] = 255
     return result
     
 
@@ -69,7 +89,6 @@ def hqWatershed(img, nb_connex = 8, mask = None):
                     labels[a,b] = p
                     p += 1
     else:
-        print "Coucou"
         mask_max = mask.max()
         for i in range(np.size(img, 0)):
             for j in range(np.size(img, 1)):
@@ -101,7 +120,6 @@ def hqWatershed(img, nb_connex = 8, mask = None):
                         if tmp_L.count((X,Y)) == 0 and X >= 0 and Y >= 0 and X < np.size(img,0) and Y < np.size(img,1):
                             if Marque[X,Y] == 0 and mask[X,Y] == mask_max:
                                 tmp_L.append((X,Y))
-    print "Markers initialized"
     
     fifos = [deque() for i in range(256)] # liste des piles correspondant aux intensités des pixels
 
@@ -130,7 +148,7 @@ def hqWatershed(img, nb_connex = 8, mask = None):
                     x, y = z[0], z[1]
             n += 1
             if (n > 256):
-                print "All queues empty"
+                print("All queues empty")
                 break
         
         Marque[x,y] = 1
@@ -164,56 +182,34 @@ def hqWatershed(img, nb_connex = 8, mask = None):
 
 if __name__ == "__main__":
     nb_connex = 8
+    factor = 1
     ext_mask = None
     img = cv2.imread("coins.png")
     img = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY) # conversion de l'image en niveaux de gris
+    #img = np.rint(modifyContrast(img, 0.25)) # rint arrondit les éléments d'un tableau à l'entier le plus proche
+    #img = img.astype(np.uint8)   # les éléments de img étant toujours des floats, on les convertir en int    
+    x, y = int(img.shape[0] / factor), int(img.shape[1] / factor) # sous-échantillonnage
+    img = scipy.misc.imresize(img, (x,y))
     cv2.namedWindow('Base image', cv2.WINDOW_NORMAL)
     cv2.imshow('Base image',img)
     cv2.waitKey(1)
     
-    radius = 20
-    kernel = np.ones((radius,radius),np.uint8)
-    img_open = cv2.morphologyEx(img, cv2.MORPH_OPEN, kernel)
-    cv2.namedWindow('Open image', cv2.WINDOW_NORMAL)
-    cv2.imshow('Open image',img_open)
-    cv2.waitKey(1)
-    
     kernel = np.ones((2,2),np.uint8)
     img_grad = cv2.morphologyEx(img, cv2.MORPH_GRADIENT, kernel)
-    Mint_arg = argrelextrema(img_open, np.less)
-    Mint = np.zeros(img.shape)
-    Mint[Mint_arg] = 1
     
-    ext_mask = cv2.imread("coins_mask.png")
-    ext_mask = cv2.cvtColor(ext_mask, cv2.COLOR_BGR2GRAY)
-    ext_mask = scipy.misc.imresize(ext_mask, img.shape)
-    cv2.namedWindow('Mask image', cv2.WINDOW_NORMAL)
-    cv2.imshow('Mask image',ext_mask)
-    cv2.waitKey(1)
-    
-    if ext_mask == None:
-        Mext = hqWatershed(255-img_open, nb_connex);
-        Mext = (Mext == 0)
-        cv2.namedWindow('Mext image', cv2.WINDOW_NORMAL)
-        cv2.imshow('Mext image', Mext.astype(np.int64))
-        cv2.waitKey(1)
-        
-        msk = (Mint + Mext)/2;
-        msk = (msk > 0);
-        cv2.namedWindow('mask image', cv2.WINDOW_NORMAL)
-        cv2.imshow('mask image', msk.astype(np.int64))
-        cv2.waitKey(1)
-    else:
-        msk = ext_mask
+    msk = cv2.imread("coins_mask.png")
+    msk = cv2.cvtColor(msk, cv2.COLOR_BGR2GRAY)
+    msk = scipy.misc.imresize(msk, img.shape)
         
     #Impose min
     # grad_modif = img_grad - msk
     result = hqWatershed(img_grad, mask = msk)
-    result = 255*((result>0) - result.min()) / (result.max() - result.min())
+    #result = 255*((result>0) - result.min()) / (result.max() - result.min())
+    result[result > 0] = 255
     cv2.namedWindow('result image', cv2.WINDOW_NORMAL)
     cv2.imshow('result image', result)
     
-    print "Done."
+    print("Done.")
     cv2.waitKey(0)
     
     cv2.destroyAllWindows()
